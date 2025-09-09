@@ -1,0 +1,155 @@
+namespace offsets {
+    uintptr_t UWorld = 0x177255E8;
+    uintptr_t AcknowledgedPawn = 0x350;
+    uintptr_t PlayerController = 0x30;
+    uintptr_t LocalPlayers = 0x38;
+    uintptr_t PlayerState = 0x2C8;
+    uintptr_t OwningGameInstance = 0x248;
+    uintptr_t GameState = 0x1D0;
+    uintptr_t PlayerArray = 0x2C0;
+    uintptr_t RootComponent = 0x1B0;
+    uintptr_t current_vehicle = 0x2BC8;
+    uintptr_t RelativeLocation = 0x140;
+    uintptr_t PawnPrivate = 0x320;
+    uintptr_t Mesh = 0x328;
+    uintptr_t TeamIndex = 0x12B9;
+    uintptr_t b_is_dying = 0x728;
+    uintptr_t BoneArray = 0x5E8;
+    uintptr_t ComponentToWorld = 0x1E0;
+    uintptr_t LastSubmitTimeOnScreen = 0x2F0;
+    uintptr_t current_weapon = 0x990;
+    uintptr_t weapon_data = 0x5A0;
+    uintptr_t AmmoCount = 0x12B4;
+    uintptr_t ItemName = 0x40;
+    uintptr_t Tier = 0xA2;
+    uintptr_t Color = 0xA2;
+    uintptr_t habanero_component = 0xA80;
+    uintptr_t username_component = 0xB40;
+    uintptr_t Platform = 0x430;
+    uintptr_t TargetedFortPawn = 0x18D0;
+    uintptr_t KillScore = 0x12D0;
+};
+
+
+
+enum boneID : int {
+    Head = 110,
+    Neck = 67,
+    LHand = 11,
+    RHand = 40,
+    RElbow = 39,
+    LElbow = 10,
+    LShoulder = 9,
+    RShoulder = 38,
+    Chest = 66,
+    Pelvis = 2,
+    LHip = 71,
+    RHip = 78,
+    LKnee = 72,
+    RKnee = 79,
+    LFeet = 75,
+    RFeet = 82,
+    Root = 0
+};
+
+	static std::string GetPlayerName(uintptr_t playerState) {
+		auto Name = memory.Read<uintptr_t>(playerState + offsets::username_component);
+		auto length = memory.Read<int>(Name + 0x10);
+		auto v6 = (__int64)length;
+		auto displayname = memory.Read<char>(playerState + 0x268);
+		auto isinlobby = memory.Read<uintptr_t>(playerState + 0x318);
+
+		if (!v6) return std::string("NaN");
+
+		auto FText = (uintptr_t)memory.Read<__int64>(Name + 0x8);
+
+		wchar_t* Buffer = new wchar_t[length];
+		driver::ReadPhysical(PVOID(static_cast<ULONGLONG>(FText)), Buffer, length * sizeof(wchar_t));
+
+
+		char v21;
+		int v22;
+		int i;
+
+		int v25;
+		UINT16* v23;
+
+		v21 = v6 - 1;
+		if (!(UINT32)v6)
+			v21 = 0;
+		v22 = 0;
+		v23 = (UINT16*)Buffer;
+		for (i = (v21) & 3; ; *v23++ += i & 7)
+		{
+			v25 = v6 - 1;
+			if (!(UINT32)v6)
+				v25 = 0;
+			if (v22 >= v25)
+				break;
+			i += 3;
+			++v22;
+		}
+
+		std::wstring PlayerName{ Buffer };
+		delete[] Buffer;
+		return std::string(PlayerName.begin(), PlayerName.end());
+	}
+	static auto getsocketlocation(ll skeletal_mesh, int bone_index) -> fvector {
+		ll ActiveArray = memory.Read<ll>(skeletal_mesh + offsets::BoneArray);
+		if (ActiveArray == 0)
+		{
+			ActiveArray = memory.Read<ll>(skeletal_mesh + offsets::BoneArray + 0x10);
+		}
+		FTransform ActiveBone = memory.Read<FTransform>(ActiveArray + (bone_index * 0x60));
+		FTransform ComponentToWorld = memory.Read<FTransform>(skeletal_mesh + offsets::ComponentToWorld);
+		D3DMATRIX M_Matrix = matrix_multiplication(ActiveBone.to_matrix_with_scale(), ComponentToWorld.to_matrix_with_scale());
+
+		return fvector(M_Matrix._41, M_Matrix._42, M_Matrix._43);
+	}
+	uintptr_t get_view_state()
+	{
+		TArray<uintptr_t> view_state = memory.Read<TArray<uintptr_t>>(WorldCache.LocalPlayer + 0xD0);
+		return view_state.Get(1);
+	}
+
+
+	camera_position_s get_camera()
+	{
+		camera_position_s cam{};
+		auto mProjection = memory.Read<FMatrix>(get_view_state() + 0x940);
+
+
+		cam.rotation.x = RadiansToDegrees(std::asin(mProjection.ZPlane.W));
+		cam.rotation.y = RadiansToDegrees(std::atan2(mProjection.YPlane.W, mProjection.XPlane.W));
+		cam.rotation.z = 0.0;
+
+		cam.location.x = mProjection.m[3][0];
+		cam.location.y = mProjection.m[3][1];
+		cam.location.z = mProjection.m[3][2];
+
+		float FieldOfView = atanf(1 / memory.Read<double>(get_view_state() + 0x740)) * 2;
+		cam.fov = FieldOfView * (180.f / M_PI);
+
+		return cam;
+	}
+
+	inline fvector2d ProjectWorldToScreen(fvector WorldLocation)
+	{
+
+		int width = GetSystemMetrics(SM_CXSCREEN);
+		int height = GetSystemMetrics(SM_CYSCREEN);
+		int screen_center_x = width / 2;
+		int screen_center_y = height / 2;
+		camera_postion = get_camera();
+		D3DMATRIX temp_matrix = to_matrix(camera_postion.rotation);
+		fvector vaxisx = fvector(temp_matrix.m[0][0], temp_matrix.m[0][1], temp_matrix.m[0][2]);
+		fvector vaxisy = fvector(temp_matrix.m[1][0], temp_matrix.m[1][1], temp_matrix.m[1][2]);
+		fvector vaxisz = fvector(temp_matrix.m[2][0], temp_matrix.m[2][1], temp_matrix.m[2][2]);
+		fvector vdelta = WorldLocation - camera_postion.location;
+		fvector vtransformed = fvector(vdelta.dot(vaxisy), vdelta.dot(vaxisz), vdelta.dot(vaxisx));
+
+		if (vtransformed.z < 1) vtransformed.z = 1;
+
+		return fvector2d(screen_center_x + vtransformed.x * ((screen_center_x / tanf(camera_postion.fov * (float)M_PI / 360.0f))) / vtransformed.z, screen_center_y - vtransformed.y * ((screen_center_x / tanf(camera_postion.fov * (float)M_PI / 360.0f))) / vtransformed.z);
+	}
+
